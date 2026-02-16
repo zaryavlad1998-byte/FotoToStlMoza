@@ -424,7 +424,7 @@ function animate() {
     renderer.render(scene, camera);
 }
 
-// ===== ЭКСПОРТ STL =====
+// ===== ЭКСПОРТ 3MF =====
 function exportSTL() {
     const width = parseInt(widthInput.value);
     const height = parseInt(heightInput.value);
@@ -434,25 +434,111 @@ function exportSTL() {
     const gap = parseFloat(blockGap.value);
     const useVariableHeight = variableHeight.checked;
     
-    let stl = 'solid mosaic\n';
+    // Создаем 3MF архив (упрощенный формат)
+    let modelXML = '<?xml version="1.0" encoding="UTF-8"?>\n';
+    modelXML += '<model unit="millimeter" xml:lang="en-US" xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02">\n';
+    modelXML += '  <resources>\n';
     
-    // Основание (упрощенно - только верхняя грань)
-    const baseW = width * pixelSize;
-    const baseH = height * pixelSize;
+    // Базовые цвета
+    const palette = getPalette();
+    palette.forEach((color, idx) => {
+        const hex = rgbToHex(color.r, color.g, color.b).substring(1);
+        modelXML += `    <basematerials id="${idx + 1}">\n`;
+        modelXML += `      <base name="Color${idx}" displaycolor="#${hex}" />\n`;
+        modelXML += `    </basematerials>\n`;
+    });
     
-    // Блоки
-    processedPixels.forEach(pixel => {
+    // Объекты (блоки)
+    let objectId = 100;
+    processedPixels.forEach((pixel, idx) => {
         const x = pixel.x * pixelSize;
         const z = pixel.y * pixelSize;
         const w = pixelSize - gap;
         const h = useVariableHeight ? blockHeightVal * pixel.brightness : blockHeightVal;
         
-        stl += createBoxSTL(x + pixelSize / 2, h / 2, z + pixelSize / 2, w, h, w);
+        const colorIndex = palette.findIndex(c => 
+            c.r === pixel.color.r && c.g === pixel.color.g && c.b === pixel.color.b
+        ) + 1;
+        
+        modelXML += `    <object id="${objectId}" type="model">\n`;
+        modelXML += `      <mesh>\n`;
+        modelXML += createBoxMesh(x + pixelSize / 2, h / 2, z + pixelSize / 2, w, h, w);
+        modelXML += `      </mesh>\n`;
+        modelXML += `    </object>\n`;
+        
+        objectId++;
     });
     
-    stl += 'endsolid mosaic';
+    // Основание
+    const baseW = width * pixelSize;
+    const baseH = height * pixelSize;
+    modelXML += `    <object id="${objectId}" type="model">\n`;
+    modelXML += `      <mesh>\n`;
+    modelXML += createBoxMesh(baseW / 2, -baseThick / 2, baseH / 2, baseW, baseThick, baseH);
+    modelXML += `      </mesh>\n`;
+    modelXML += `    </object>\n`;
     
-    downloadFile('mosaic.stl', stl);
+    // Build items
+    modelXML += '  </resources>\n';
+    modelXML += '  <build>\n';
+    
+    objectId = 100;
+    processedPixels.forEach((pixel, idx) => {
+        const colorIndex = palette.findIndex(c => 
+            c.r === pixel.color.r && c.g === pixel.color.g && c.b === pixel.color.b
+        ) + 1;
+        
+        modelXML += `    <item objectid="${objectId}" partnumber="block${idx}" pid="${colorIndex}" pindex="0" />\n`;
+        objectId++;
+    });
+    
+    modelXML += `    <item objectid="${objectId}" partnumber="base" />\n`;
+    modelXML += '  </build>\n';
+    modelXML += '</model>';
+    
+    // Скачиваем как 3MF (упрощенный вариант без ZIP)
+    // Для полноценного 3MF нужна библиотека JSZip
+    downloadFile('mosaic.3mf', modelXML);
+}
+
+function createBoxMesh(cx, cy, cz, w, h, d) {
+    const hw = w / 2;
+    const hh = h / 2;
+    const hd = d / 2;
+    
+    const vertices = [
+        [cx - hw, cy - hh, cz - hd],
+        [cx + hw, cy - hh, cz - hd],
+        [cx + hw, cy + hh, cz - hd],
+        [cx - hw, cy + hh, cz - hd],
+        [cx - hw, cy - hh, cz + hd],
+        [cx + hw, cy - hh, cz + hd],
+        [cx + hw, cy + hh, cz + hd],
+        [cx - hw, cy + hh, cz + hd]
+    ];
+    
+    let mesh = '        <vertices>\n';
+    vertices.forEach(v => {
+        mesh += `          <vertex x="${v[0].toFixed(3)}" y="${v[1].toFixed(3)}" z="${v[2].toFixed(3)}" />\n`;
+    });
+    mesh += '        </vertices>\n';
+    
+    mesh += '        <triangles>\n';
+    const faces = [
+        [0, 2, 1], [0, 3, 2], // front
+        [4, 5, 6], [4, 6, 7], // back
+        [0, 1, 5], [0, 5, 4], // bottom
+        [3, 6, 2], [3, 7, 6], // top
+        [0, 4, 7], [0, 7, 3], // left
+        [1, 2, 6], [1, 6, 5]  // right
+    ];
+    
+    faces.forEach(face => {
+        mesh += `          <triangle v1="${face[0]}" v2="${face[1]}" v3="${face[2]}" />\n`;
+    });
+    mesh += '        </triangles>\n';
+    
+    return mesh;
 }
 
 function createBoxSTL(cx, cy, cz, w, h, d) {
