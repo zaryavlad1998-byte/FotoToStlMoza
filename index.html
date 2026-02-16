@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mosabrik STL Generator</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1><i class="fas fa-cubes"></i> Mosabrik STL Generator</h1>
+            <p>Преврати фото в 3D-мозаику для печати</p>
+        </header>
+
+        <main>
+            <!-- Upload Section -->
+            <section class="upload-section">
+                <div class="upload-area" id="uploadArea">
+                    <i class="fas fa-cloud-upload-alt"></i>
+                    <h3>Загрузи изображение</h3>
+                    <p>Перетащи файл или нажми для выбора</p>
+                    <input type="file" id="fileInput" accept="image/*" hidden>
+                </div>
+                <canvas id="previewCanvas" style="display:none;"></canvas>
+            </section>
+
+            <!-- Settings Section -->
+            <section class="settings-section" id="settingsSection" style="display:none;">
+                <div class="settings-grid">
+                    <!-- Basic Settings -->
+                    <div class="settings-card">
+                        <h3><i class="fas fa-sliders-h"></i> Основные настройки</h3>
+                        
+                        <div class="setting-group">
+                            <label>Размер мозаики (пикселей)</label>
+                            <div class="size-inputs">
+                                <input type="number" id="widthInput" value="48" min="8" max="128">
+                                <span>×</span>
+                                <input type="number" id="heightInput" value="48" min="8" max="128">
+                            </div>
+                            <small>Размер печати: <span id="printSize">256×256 мм</span></small>
+                        </div>
+
+                        <div class="setting-group">
+                            <label>
+                                <input type="checkbox" id="advancedToggle">
+                                Расширенные настройки
+                            </label>
+                        </div>
+                    </div>
+
+                    <!-- Color Palette -->
+                    <div class="settings-card">
+                        <h3><i class="fas fa-palette"></i> Палитра цветов (до 4)</h3>
+                        <div id="colorPalette">
+                            <div class="color-item">
+                                <input type="color" value="#000000" data-index="0">
+                                <input type="text" placeholder="HEX/RAL" value="#000000">
+                                <button class="remove-color" style="display:none;"><i class="fas fa-times"></i></button>
+                            </div>
+                        </div>
+                        <button id="addColorBtn" class="btn-secondary"><i class="fas fa-plus"></i> Добавить цвет</button>
+                    </div>
+
+                    <!-- Advanced Settings -->
+                    <div class="settings-card" id="advancedSettings" style="display:none;">
+                        <h3><i class="fas fa-cogs"></i> Расширенные параметры</h3>
+                        
+                        <div class="setting-group">
+                            <label>
+                                <input type="checkbox" id="variableHeight">
+                                Переменная высота блоков
+                            </label>
+                            <small>Высота зависит от яркости пикселя</small>
+                        </div>
+
+                        <div class="setting-group">
+                            <label>Высота блока (мм)</label>
+                            <input type="range" id="blockHeight" min="1" max="10" value="3" step="0.5">
+                            <span id="blockHeightValue">3 мм</span>
+                        </div>
+
+                        <div class="setting-group">
+                            <label>Толщина основы (мм)</label>
+                            <input type="range" id="baseThickness" min="0.5" max="5" value="2" step="0.5">
+                            <span id="baseThicknessValue">2 мм</span>
+                        </div>
+
+                        <div class="setting-group">
+                            <label>Зазор между блоками (мм)</label>
+                            <input type="range" id="blockGap" min="0" max="1" value="0.2" step="0.1">
+                            <span id="blockGapValue">0.2 мм</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="action-buttons">
+                    <button id="generateBtn" class="btn-primary">
+                        <i class="fas fa-magic"></i> Сгенерировать 3D Preview
+                    </button>
+                </div>
+            </section>
+
+            <!-- 3D Preview Section -->
+            <section class="preview-section" id="previewSection" style="display:none;">
+                <h3><i class="fas fa-cube"></i> 3D Preview</h3>
+                <div id="viewer3D"></div>
+                <div class="preview-controls">
+                    <button id="resetCamera" class="btn-secondary"><i class="fas fa-redo"></i> Сбросить камеру</button>
+                    <button id="downloadSTL" class="btn-primary"><i class="fas fa-download"></i> Скачать STL</button>
+                </div>
+            </section>
+        </main>
+
+        <footer>
+            <p>Made with <i class="fas fa-heart"></i> for 3D printing enthusiasts</p>
+        </footer>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="js/app.js"></script>
+</body>
+</html>
