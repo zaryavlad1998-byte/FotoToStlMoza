@@ -450,20 +450,56 @@ async function export3MF() {
 
     const allVertices = [];
     const allTriangles = [];
+    const materialPalette = [];
+    const materialIndexByKey = new Map();
+
+    const getMaterialIndex = (color) => {
+        const key = `${color.r},${color.g},${color.b}`;
+        if (materialIndexByKey.has(key)) {
+            return materialIndexByKey.get(key);
+        }
+
+        const nextIndex = materialPalette.length;
+        materialPalette.push(color);
+        materialIndexByKey.set(key, nextIndex);
+        return nextIndex;
+    };
 
     processedPixels.forEach((pixel) => {
         const x = pixel.x * pixelSize;
         const z = pixel.y * pixelSize;
         const w = pixelSize - gap;
         const h = useVariableHeight ? blockHeightVal * pixel.brightness : blockHeightVal;
-        appendBoxToMesh(allVertices, allTriangles, x + pixelSize / 2, h / 2, z + pixelSize / 2, w, h, w);
+        const materialIndex = getMaterialIndex(pixel.color);
+        appendBoxToMesh(
+            allVertices,
+            allTriangles,
+            x + pixelSize / 2,
+            h / 2,
+            z + pixelSize / 2,
+            w,
+            h,
+            w,
+            materialIndex
+        );
     });
 
     const baseW = width * pixelSize;
     const baseH = height * pixelSize;
-    appendBoxToMesh(allVertices, allTriangles, baseW / 2, -baseThick / 2, baseH / 2, baseW, baseThick, baseH);
+    const baseMaterialIndex = getMaterialIndex({ r: 140, g: 140, b: 140 });
+    appendBoxToMesh(
+        allVertices,
+        allTriangles,
+        baseW / 2,
+        -baseThick / 2,
+        baseH / 2,
+        baseW,
+        baseThick,
+        baseH,
+        baseMaterialIndex
+    );
 
-    const modelXML = create3MFModelXML(allVertices, allTriangles);
+    const modelXML = create3MFModelXML(allVertices, allTriangles, materialPalette);
     const contentTypesXML = create3MFContentTypesXML();
     const relationshipsXML = create3MFRelationshipsXML();
 
@@ -485,7 +521,7 @@ async function export3MF() {
     }
 }
 
-function appendBoxToMesh(vertices, triangles, cx, cy, cz, w, h, d) {
+function appendBoxToMesh(vertices, triangles, cx, cy, cz, w, h, d, materialIndex) {
     const hw = w / 2;
     const hh = h / 2;
     const hd = d / 2;
@@ -513,18 +549,24 @@ function appendBoxToMesh(vertices, triangles, cx, cy, cz, w, h, d) {
     const vertexOffset = vertices.length;
     boxVertices.forEach((vertex) => vertices.push(vertex));
     faces.forEach((face) => {
-        triangles.push([
-            face[0] + vertexOffset,
-            face[1] + vertexOffset,
-            face[2] + vertexOffset
-        ]);
+        triangles.push({
+            v1: face[0] + vertexOffset,
+            v2: face[1] + vertexOffset,
+            v3: face[2] + vertexOffset,
+            materialIndex
+        });
     });
 }
 
-function create3MFModelXML(vertices, triangles) {
+function create3MFModelXML(vertices, triangles, materialPalette) {
     let modelXML = '<?xml version="1.0" encoding="UTF-8"?>\n';
     modelXML += '<model unit="millimeter" xml:lang="en-US" xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02">\n';
     modelXML += '  <resources>\n';
+    modelXML += '    <basematerials id="1">\n';
+    materialPalette.forEach((color, index) => {
+        modelXML += `      <base name="Color${index}" displaycolor="${rgbTo3MFColor(color)}" />\n`;
+    });
+    modelXML += '    </basematerials>\n';
     modelXML += '    <object id="1" type="model">\n';
     modelXML += '      <mesh>\n';
     modelXML += '        <vertices>\n';
@@ -537,7 +579,7 @@ function create3MFModelXML(vertices, triangles) {
     modelXML += '        <triangles>\n';
 
     triangles.forEach((triangle) => {
-        modelXML += `          <triangle v1="${triangle[0]}" v2="${triangle[1]}" v3="${triangle[2]}" />\n`;
+        modelXML += `          <triangle v1="${triangle.v1}" v2="${triangle.v2}" v3="${triangle.v3}" pid="1" p1="${triangle.materialIndex}" p2="${triangle.materialIndex}" p3="${triangle.materialIndex}" />\n`;
     });
 
     modelXML += '        </triangles>\n';
@@ -550,6 +592,14 @@ function create3MFModelXML(vertices, triangles) {
     modelXML += '</model>\n';
 
     return modelXML;
+}
+
+function rgbTo3MFColor(color) {
+    return `#${toHexByte(color.r)}${toHexByte(color.g)}${toHexByte(color.b)}FF`;
+}
+
+function toHexByte(value) {
+    return Math.max(0, Math.min(255, value)).toString(16).padStart(2, '0').toUpperCase();
 }
 
 function create3MFContentTypesXML() {
