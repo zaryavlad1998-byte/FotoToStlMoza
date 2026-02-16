@@ -241,10 +241,6 @@ function hexToRgb(hex) {
     } : { r: 0, g: 0, b: 0 };
 }
 
-function rgbToHex(r, g, b) {
-    return "#" + ((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1);
-}
-
 function processImage(img, targetWidth, targetHeight, palette) {
     const canvas = document.createElement('canvas');
     canvas.width = targetWidth;
@@ -438,7 +434,12 @@ function animate() {
 }
 
 // ===== ЭКСПОРТ 3MF =====
-function export3MF() {
+async function export3MF() {
+    if (typeof JSZip === 'undefined') {
+        alert('Не удалось подготовить 3MF: библиотека JSZip не загружена');
+        return;
+    }
+
     const width = parseInt(widthInput.value);
     const height = parseInt(heightInput.value);
     const pixelSize = 256 / width;
@@ -446,80 +447,50 @@ function export3MF() {
     const blockHeightVal = parseFloat(blockHeight.value);
     const gap = parseFloat(blockGap.value);
     const useVariableHeight = variableHeight.checked;
-    
-    // Создаем 3MF архив (упрощенный формат)
-    let modelXML = '<?xml version="1.0" encoding="UTF-8"?>\n';
-    modelXML += '<model unit="millimeter" xml:lang="en-US" xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02">\n';
-    modelXML += '  <resources>\n';
-    
-    // Базовые цвета
-    const palette = getPalette();
-    palette.forEach((color, idx) => {
-        const hex = rgbToHex(color.r, color.g, color.b).substring(1);
-        modelXML += `    <basematerials id="${idx + 1}">\n`;
-        modelXML += `      <base name="Color${idx}" displaycolor="#${hex}" />\n`;
-        modelXML += `    </basematerials>\n`;
-    });
-    
-    // Объекты (блоки)
-    let objectId = 100;
-    processedPixels.forEach((pixel, idx) => {
+
+    const allVertices = [];
+    const allTriangles = [];
+
+    processedPixels.forEach((pixel) => {
         const x = pixel.x * pixelSize;
         const z = pixel.y * pixelSize;
         const w = pixelSize - gap;
         const h = useVariableHeight ? blockHeightVal * pixel.brightness : blockHeightVal;
-        
-        const colorIndex = palette.findIndex(c => 
-            c.r === pixel.color.r && c.g === pixel.color.g && c.b === pixel.color.b
-        ) + 1;
-        
-        modelXML += `    <object id="${objectId}" type="model">\n`;
-        modelXML += `      <mesh>\n`;
-        modelXML += createBoxMesh(x + pixelSize / 2, h / 2, z + pixelSize / 2, w, h, w);
-        modelXML += `      </mesh>\n`;
-        modelXML += `    </object>\n`;
-        
-        objectId++;
+        appendBoxToMesh(allVertices, allTriangles, x + pixelSize / 2, h / 2, z + pixelSize / 2, w, h, w);
     });
-    
-    // Основание
+
     const baseW = width * pixelSize;
     const baseH = height * pixelSize;
-    modelXML += `    <object id="${objectId}" type="model">\n`;
-    modelXML += `      <mesh>\n`;
-    modelXML += createBoxMesh(baseW / 2, -baseThick / 2, baseH / 2, baseW, baseThick, baseH);
-    modelXML += `      </mesh>\n`;
-    modelXML += `    </object>\n`;
-    
-    // Build items
-    modelXML += '  </resources>\n';
-    modelXML += '  <build>\n';
-    
-    objectId = 100;
-    processedPixels.forEach((pixel, idx) => {
-        const colorIndex = palette.findIndex(c => 
-            c.r === pixel.color.r && c.g === pixel.color.g && c.b === pixel.color.b
-        ) + 1;
-        
-        modelXML += `    <item objectid="${objectId}" partnumber="block${idx}" pid="${colorIndex}" pindex="0" />\n`;
-        objectId++;
-    });
-    
-    modelXML += `    <item objectid="${objectId}" partnumber="base" />\n`;
-    modelXML += '  </build>\n';
-    modelXML += '</model>';
-    
-    // Скачиваем как 3MF (упрощенный вариант без ZIP)
-    // Для полноценного 3MF нужна библиотека JSZip
-    downloadFile('mosaic.3mf', modelXML);
+    appendBoxToMesh(allVertices, allTriangles, baseW / 2, -baseThick / 2, baseH / 2, baseW, baseThick, baseH);
+
+    const modelXML = create3MFModelXML(allVertices, allTriangles);
+    const contentTypesXML = create3MFContentTypesXML();
+    const relationshipsXML = create3MFRelationshipsXML();
+
+    try {
+        const zip = new JSZip();
+        zip.file('[Content_Types].xml', contentTypesXML);
+        zip.folder('_rels').file('.rels', relationshipsXML);
+        zip.folder('3D').file('3dmodel.model', modelXML);
+
+        const blob = await zip.generateAsync({
+            type: 'blob',
+            compression: 'DEFLATE',
+            mimeType: 'model/3mf'
+        });
+
+        downloadBlob('mosaic.3mf', blob);
+    } catch (error) {
+        alert('Не удалось создать 3MF файл');
+    }
 }
 
-function createBoxMesh(cx, cy, cz, w, h, d) {
+function appendBoxToMesh(vertices, triangles, cx, cy, cz, w, h, d) {
     const hw = w / 2;
     const hh = h / 2;
     const hd = d / 2;
-    
-    const vertices = [
+
+    const boxVertices = [
         [cx - hw, cy - hh, cz - hd],
         [cx + hw, cy - hh, cz - hd],
         [cx + hw, cy + hh, cz - hd],
@@ -529,14 +500,7 @@ function createBoxMesh(cx, cy, cz, w, h, d) {
         [cx + hw, cy + hh, cz + hd],
         [cx - hw, cy + hh, cz + hd]
     ];
-    
-    let mesh = '        <vertices>\n';
-    vertices.forEach(v => {
-        mesh += `          <vertex x="${v[0].toFixed(3)}" y="${v[1].toFixed(3)}" z="${v[2].toFixed(3)}" />\n`;
-    });
-    mesh += '        </vertices>\n';
-    
-    mesh += '        <triangles>\n';
+
     const faces = [
         [0, 2, 1], [0, 3, 2], // front
         [4, 5, 6], [4, 6, 7], // back
@@ -545,17 +509,67 @@ function createBoxMesh(cx, cy, cz, w, h, d) {
         [0, 4, 7], [0, 7, 3], // left
         [1, 2, 6], [1, 6, 5]  // right
     ];
-    
-    faces.forEach(face => {
-        mesh += `          <triangle v1="${face[0]}" v2="${face[1]}" v3="${face[2]}" />\n`;
+
+    const vertexOffset = vertices.length;
+    boxVertices.forEach((vertex) => vertices.push(vertex));
+    faces.forEach((face) => {
+        triangles.push([
+            face[0] + vertexOffset,
+            face[1] + vertexOffset,
+            face[2] + vertexOffset
+        ]);
     });
-    mesh += '        </triangles>\n';
-    
-    return mesh;
 }
 
-function downloadFile(filename, content) {
-    const blob = new Blob([content], { type: 'text/plain' });
+function create3MFModelXML(vertices, triangles) {
+    let modelXML = '<?xml version="1.0" encoding="UTF-8"?>\n';
+    modelXML += '<model unit="millimeter" xml:lang="en-US" xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02">\n';
+    modelXML += '  <resources>\n';
+    modelXML += '    <object id="1" type="model">\n';
+    modelXML += '      <mesh>\n';
+    modelXML += '        <vertices>\n';
+
+    vertices.forEach((vertex) => {
+        modelXML += `          <vertex x="${vertex[0].toFixed(3)}" y="${vertex[1].toFixed(3)}" z="${vertex[2].toFixed(3)}" />\n`;
+    });
+
+    modelXML += '        </vertices>\n';
+    modelXML += '        <triangles>\n';
+
+    triangles.forEach((triangle) => {
+        modelXML += `          <triangle v1="${triangle[0]}" v2="${triangle[1]}" v3="${triangle[2]}" />\n`;
+    });
+
+    modelXML += '        </triangles>\n';
+    modelXML += '      </mesh>\n';
+    modelXML += '    </object>\n';
+    modelXML += '  </resources>\n';
+    modelXML += '  <build>\n';
+    modelXML += '    <item objectid="1" />\n';
+    modelXML += '  </build>\n';
+    modelXML += '</model>\n';
+
+    return modelXML;
+}
+
+function create3MFContentTypesXML() {
+    return `<?xml version="1.0" encoding="UTF-8"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+  <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+  <Default Extension="model" ContentType="application/vnd.ms-package.3dmanufacturing-3dmodel+xml"/>
+</Types>
+`;
+}
+
+function create3MFRelationshipsXML() {
+    return `<?xml version="1.0" encoding="UTF-8"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Target="/3D/3dmodel.model" Id="rel0" Type="http://schemas.microsoft.com/3dmanufacturing/2013/01/3dmodel"/>
+</Relationships>
+`;
+}
+
+function downloadBlob(filename, blob) {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
