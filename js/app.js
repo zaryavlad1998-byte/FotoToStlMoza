@@ -17,7 +17,8 @@ const printSize = document.getElementById('printSize');
 const colorPalette = document.getElementById('colorPalette');
 const addColorBtn = document.getElementById('addColorBtn');
 const generateBtn = document.getElementById('generateBtn');
-const downloadSTL = document.getElementById('downloadSTL');
+const quickDownload3MF = document.getElementById('quickDownload3MF');
+const download3MF = document.getElementById('download3MF');
 const resetCamera = document.getElementById('resetCamera');
 
 // Advanced settings
@@ -129,6 +130,7 @@ function setupSettings() {
     });
     
     generateBtn.addEventListener('click', generatePreview);
+    quickDownload3MF.addEventListener('click', download3MFDirectly);
 }
 
 function updatePrintSize() {
@@ -201,17 +203,28 @@ function updateRemoveButtons() {
 
 // ===== ОБРАБОТКА ИЗОБРАЖЕНИЯ =====
 function generatePreview() {
-    if (!uploadedImage) return;
-    
+    if (!prepareModelData()) return;
+    previewSection.style.display = 'block';
+    create3DPreview();
+    previewSection.scrollIntoView({ behavior: 'smooth' });
+}
+
+function prepareModelData() {
+    if (!uploadedImage) {
+        alert('Сначала загрузите изображение');
+        return false;
+    }
+
     const width = parseInt(widthInput.value);
     const height = parseInt(heightInput.value);
     const palette = getPalette();
-    
     processedPixels = processImage(uploadedImage, width, height, palette);
-    
-    create3DPreview();
-    previewSection.style.display = 'block';
-    previewSection.scrollIntoView({ behavior: 'smooth' });
+    return true;
+}
+
+function download3MFDirectly() {
+    if (!prepareModelData()) return;
+    export3MF();
 }
 
 function getPalette() {
@@ -335,7 +348,7 @@ function create3DPreview() {
         camera.lookAt(width / 2, 0, height / 2);
     };
     
-    downloadSTL.onclick = exportSTL;
+    download3MF.onclick = export3MF;
 }
 
 function createMosaic() {
@@ -425,7 +438,7 @@ function animate() {
 }
 
 // ===== ЭКСПОРТ 3MF =====
-function exportSTL() {
+function export3MF() {
     const width = parseInt(widthInput.value);
     const height = parseInt(heightInput.value);
     const pixelSize = 256 / width;
@@ -539,65 +552,6 @@ function createBoxMesh(cx, cy, cz, w, h, d) {
     mesh += '        </triangles>\n';
     
     return mesh;
-}
-
-function createBoxSTL(cx, cy, cz, w, h, d) {
-    const hw = w / 2;
-    const hh = h / 2;
-    const hd = d / 2;
-    
-    const vertices = [
-        [cx - hw, cy - hh, cz - hd],
-        [cx + hw, cy - hh, cz - hd],
-        [cx + hw, cy + hh, cz - hd],
-        [cx - hw, cy + hh, cz - hd],
-        [cx - hw, cy - hh, cz + hd],
-        [cx + hw, cy - hh, cz + hd],
-        [cx + hw, cy + hh, cz + hd],
-        [cx - hw, cy + hh, cz + hd]
-    ];
-    
-    const faces = [
-        [0, 2, 1], [0, 3, 2], // front
-        [4, 5, 6], [4, 6, 7], // back
-        [0, 1, 5], [0, 5, 4], // bottom
-        [3, 6, 2], [3, 7, 6], // top
-        [0, 4, 7], [0, 7, 3], // left
-        [1, 2, 6], [1, 6, 5]  // right
-    ];
-    
-    let stl = '';
-    faces.forEach(face => {
-        const v0 = vertices[face[0]];
-        const v1 = vertices[face[1]];
-        const v2 = vertices[face[2]];
-        
-        const normal = calculateNormal(v0, v1, v2);
-        
-        stl += `  facet normal ${normal[0]} ${normal[1]} ${normal[2]}\n`;
-        stl += `    outer loop\n`;
-        stl += `      vertex ${v0[0]} ${v0[1]} ${v0[2]}\n`;
-        stl += `      vertex ${v1[0]} ${v1[1]} ${v1[2]}\n`;
-        stl += `      vertex ${v2[0]} ${v2[1]} ${v2[2]}\n`;
-        stl += `    endloop\n`;
-        stl += `  endfacet\n`;
-    });
-    
-    return stl;
-}
-
-function calculateNormal(v0, v1, v2) {
-    const u = [v1[0] - v0[0], v1[1] - v0[1], v1[2] - v0[2]];
-    const v = [v2[0] - v0[0], v2[1] - v0[1], v2[2] - v0[2]];
-    
-    const normal = [
-        u[1] * v[2] - u[2] * v[1],
-        u[2] * v[0] - u[0] * v[2],
-        u[0] * v[1] - u[1] * v[0]
-    ];
-    
-    const length = Math.sqrt(normal[0] ** 2 + normal[1] ** 2 + normal[2] ** 2);
-    return normal.map(n => (n / length).toFixed(6));
 }
 
 function downloadFile(filename, content) {
